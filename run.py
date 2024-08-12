@@ -134,7 +134,7 @@ class Doodstream:
     def download_video(self, url, bot, chat_id):
         filename = self.generate_random_string(10) + ".mp4"
         bot.send_message(chat_id, "⬇️ Mengunduh video...")
-        with requests.get(url, stream=True, headers=self.base_headers) as r:
+        with requests.get(url, stream=False, headers=self.base_headers) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
