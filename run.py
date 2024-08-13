@@ -1,3 +1,4 @@
+import requests
 import telebot
 import aiohttp
 import asyncio
