@@ -1,2 +1,4 @@
 telebot 
-requests
+requests 
+tgcrypto 
+pyrogram
