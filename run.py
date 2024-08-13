@@ -1,4 +1,3 @@
-import requests
 import telebot
 import aiohttp
 import asyncio
@@ -7,8 +6,8 @@ import random
 import string
 import time
 import os
+import requests
 import socket
-from concurrent.futures import ThreadPoolExecutor
 
 # Gantilah dengan API Token bot Telegram Anda
 API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'
@@ -71,28 +70,30 @@ class Doodstream:
         characters = string.ascii_letters + string.digits
         return ''.join(random.choice(characters) for _ in range(length))
 
-    def solve_captcha(self):
+    async def solve_captcha(self):
         endpoint = "https://turn.seized.live/solve"
         headers = {"Content-Type": "application/json"}
         data = {"sitekey": "0x4AAAAAAALn0BYsCrtFUbm_", "invisible": True, "url": self.url}
 
         try:
-            response = requests.post(endpoint, json=data, headers=headers)
-            if response.status_code == 200:
-                print(f"Captcha berhasil dipecahkan: {response.json()}")
-                verify = self.validate_captcha(response.json()["token"])
-                return response.json()
-            else:
-                print(f"Error: {response.status_code}, {response.text}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(endpoint, json=data, headers=headers) as response:
+                    if response.status_code == 200:
+                        print(f"Captcha berhasil dipecahkan: {await response.json()}")
+                        verify = await self.validate_captcha((await response.json())["token"])
+                        return await response.json()
+                    else:
+                        print(f"Error: {response.status_code}, {await response.text()}")
         except Exception as e:
             print(f"Error: {e}")
 
         return None
 
-    def validate_captcha(self, token):
+    async def validate_captcha(self, token):
         headers = self.base_headers.copy()
-        response = requests.get(f"https://d0000d.com/dood?op=validate&gc_response={token}", headers=headers)
-        return response.text
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"https://d0000d.com/dood?op=validate&gc_response={token}", headers=headers) as response:
+                return await response.text()
 
     def extract_md5_url(self, html_response):
         match = re.search(r"\$\.get\('\/pass_md5([^']+)", html_response)
@@ -129,7 +130,8 @@ class Doodstream:
                 md5_url = f"https://d0000d.com{md5_url}"
     
                 async with session.get(md5_url, headers=self.md5_headers) as response:
-                    constructed_url = f"{await response.text()}{self.generate_random_string(10)}?token={data_for_later}&expiry={int(time.time() * 1000)}#.mp4"
+                    response_text = await response.text()
+                    constructed_url = f"{response_text}{self.generate_random_string(10)}?token={data_for_later}&expiry={int(time.time() * 1000)}#.mp4"
                 
                 bot.edit_message_text("🔗 URL video berhasil dibangun dan siap diunduh...", chat_id, msg.message_id)
                 return constructed_url
@@ -160,7 +162,7 @@ class Doodstream:
     async def upload_video(self, filename, bot, chat_id):
         try:
             with open(filename, 'rb') as video:
-                await bot.send_video(chat_id, video)
+                bot.send_video(chat_id, video)
             os.remove(filename)
             bot.send_message(chat_id, f"🗑️ File {filename} telah dihapus setelah diunggah.")
         except Exception as e:
