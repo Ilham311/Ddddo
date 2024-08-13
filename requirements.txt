@@ -1,5 +1,5 @@
 telebot 
 requests 
 tgcrypto 
-pyrogram
+aiohttp
 telethon
