@@ -151,34 +151,35 @@ class Doodstream:
             return None
 
     async def download_video(self, url, bot, chat_id):
-        filename = self.generate_random_string(10) + ".mp4"
-        try:
-            msg = bot.send_message(chat_id, "⬇️ Mengunduh video...")
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=self.base_headers) as response:
-                    response.raise_for_status()
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded_size = 0
-                    last_percent_complete = 0
+        fiasync def download_video(self, url, bot, chat_id):
+    filename = self.generate_random_string(10) + ".mp4"
+    try:
+        msg = bot.send_message(chat_id, "⬇️ Mengunduh video... 0%")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=self.base_headers) as response:
+                response.raise_for_status()
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded_size = 0
+                last_percent_complete = 0
 
-                    with open(filename, 'wb') as f:
-                        async for chunk in response.content.iter_any(8192):
-                            f.write(chunk)
-                            downloaded_size += len(chunk)
-                            percent_complete = (downloaded_size / total_size) * 100
+                with open(filename, 'wb') as f:
+                    async for chunk in response.content.iter_any(8192):
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        percent_complete = (downloaded_size / total_size) * 100
 
-                            if int(percent_complete) > last_percent_complete:
-                                progress_text = (f"📥 Mengunduh file...\n"
-                                                 f"{get_progress_bar(percent_complete)}\n"
-                                                 f"🗂️ Proses: {format_size(downloaded_size)} dari {format_size(total_size)}")
-                                bot.edit_message_text(progress_text, chat_id, msg.message_id)
-                                last_percent_complete = int(percent_complete)
+                        if int(percent_complete) > last_percent_complete:
+                            progress_text = f"⬇️ Mengunduh video... {self.get_progress_bar(percent_complete)}\n{self.format_size(downloaded_size)} dari {self.format_size(total_size)}"
+                            bot.edit_message_text(progress_text, chat_id, msg.message_id)
+                            last_percent_complete = int(percent_complete)
 
-            bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
-            return filename
-        except Exception as e:
-            bot.edit_message_text(f"❌ Gagal mengunduh video: {str(e)}", chat_id, msg.message_id)
-            return None
+        bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
+        return filename
+    except Exception as e:
+        bot.edit_message_text(f"❌ Gagal mengunduh video: {str(e)}", chat_id, msg.message_id)
+        return None
 
     async def upload_video(self, filename, bot, chat_id):
         try:
