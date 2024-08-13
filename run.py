@@ -5,10 +5,9 @@ import re
 import random
 import string
 import time
-import requests
 import os
+import requests
 import socket
-from io import BytesIO
 
 API_TOKEN = '6324930447:AAEK_w2_6XELCbkpVLwPN0_Sm4pfaZYv1G0'
 bot = telebot.TeleBot(API_TOKEN)
@@ -151,73 +150,42 @@ class Doodstream:
             return None
 
     async def download_video(self, url, bot, chat_id):
-        fiasync def download_video(self, url, bot, chat_id):
-    filename = self.generate_random_string(10) + ".mp4"
-    try:
-        msg = bot.send_message(chat_id, "⬇️ Mengunduh video... 0%")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=self.base_headers) as response:
-                response.raise_for_status()
-                total_size = int(response.headers.get('content-length', 0))
-                downloaded_size = 0
-                last_percent_complete = 0
+        filename = self.generate_random_string(10) + ".mp4"
+        try:
+            msg = bot.send_message(chat_id, "⬇️ Mengunduh video...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=self.base_headers) as response:
+                    response.raise_for_status()
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded_size = 0
+                    last_percent_complete = 0
 
-                with open(filename, 'wb') as f:
-                    async for chunk in response.content.iter_any(8192):
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-                        percent_complete = (downloaded_size / total_size) * 100
+                    with open(filename, 'wb') as f:
+                        async for chunk in response.content.iter_any(8192):
+                            f.write(chunk)
+                            downloaded_size += len(chunk)
+                            percent_complete = (downloaded_size / total_size) * 100
 
-                        if int(percent_complete) > last_percent_complete:
-                            progress_text = f"⬇️ Mengunduh video... {self.get_progress_bar(percent_complete)}\n{self.format_size(downloaded_size)} dari {self.format_size(total_size)}"
-                            bot.edit_message_text(progress_text, chat_id, msg.message_id)
-                            last_percent_complete = int(percent_complete)
+                            if int(percent_complete) > last_percent_complete:
+                                progress_text = (f"📥 Mengunduh file...\n"
+                                                 f"{get_progress_bar(percent_complete)}\n"
+                                                 f"🗂️ Proses: {format_size(downloaded_size)} dari {format_size(total_size)}")
+                                bot.edit_message_text(progress_text, chat_id, msg.message_id)
+                                last_percent_complete = int(percent_complete)
 
-        bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
-        return filename
-    except Exception as e:
-        bot.edit_message_text(f"❌ Gagal mengunduh video: {str(e)}", chat_id, msg.message_id)
-        return None
+            bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
+            return filename
+        except Exception as e:
+            bot.edit_message_text(f"❌ Gagal mengunduh video: {str(e)}", chat_id, msg.message_id)
+            return None
 
     async def upload_video(self, filename, bot, chat_id):
         try:
             msg = bot.send_message(chat_id, "📤 Mengunggah file...")
             with open(filename, 'rb') as video:
-                file_size = os.path.getsize(filename)
-                last_percent_complete = 0
+                bot.send_video(chat_id, video, caption="Video diunggah!")
+                bot.edit_message_text("✅ Video berhasil diunggah.", chat_id, msg.message_id)
 
-                def get_file_size(file):
-                    return os.path.getsize(file)
-                
-                # Progress bar untuk upload
-                async def upload_progress(file):
-                    file_size = get_file_size(file)
-                    uploaded_size = 0
-
-                    def update_progress(current_size):
-                        nonlocal last_percent_complete
-                        percent_complete = (current_size / file_size) * 100
-
-                        if int(percent_complete) > last_percent_complete:
-                            progress_text = (f"📤 Mengunggah file...\n"
-                                             f"{get_progress_bar(percent_complete)}\n"
-                                             f"🗂️ Proses: {format_size(current_size)} dari {format_size(file_size)}")
-                            bot.edit_message_text(progress_text, chat_id, msg.message_id)
-                            last_percent_complete = int(percent_complete)
-                    
-                    while True:
-                        chunk = file.read(8192)
-                        if not chunk:
-                            break
-                        uploaded_size += len(chunk)
-                        update_progress(uploaded_size)
-                        await asyncio.sleep(0.1)  # Simulasi upload untuk contoh
-
-                await upload_progress(video)
-
-            bot.send_video(chat_id, open(filename, 'rb'))
             os.remove(filename)
             bot.send_message(chat_id, f"🗑️ File {filename} telah dihapus setelah diunggah.")
         except Exception as e:
