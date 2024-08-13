@@ -1,17 +1,25 @@
-from pyrogram import Client, filters
+import os
 import requests
 import re
 import random
 import string
 import time
-import os
 import socket
+from telethon import TelegramClient, events
+from telethon.tl.types import InputFile
+import telebot
 
-API_ID = 961780  # Gantilah dengan API ID Anda
-API_HASH = "bbbfa43f067e1e8e2fb41f334d32a6a7"  # Gantilah dengan API Hash Anda
-BOT_TOKEN = "6324930447:AAEcHZLONpDPT5vg1Wmf1X9_C6OJJZc2L6Y"  # Gantilah dengan token bot Telegram Anda
+# Informasi autentikasi
+API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'
+api_id = 961780
+api_hash = 'bbbfa43f067e1e8e2fb41f334d32a6a7'
+session_file = 'my_session.session'  # File session baru akan dibuat di sini
 
-app = Client("doodstream_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Inisialisasi bot
+bot = telebot.TeleBot(API_TOKEN)
+
+# Inisialisasi Telethon client
+client = TelegramClient(session_file, api_id, api_hash)
 
 class Doodstream:
     def __init__(self, doodstream_url):
@@ -70,6 +78,30 @@ class Doodstream:
         characters = string.ascii_letters + string.digits
         return ''.join(random.choice(characters) for _ in range(length))
 
+    def solve_captcha(self):
+        endpoint = "https://turn.seized.live/solve"
+        headers = {"Content-Type": "application/json"}
+        data = {"sitekey": "0x4AAAAAAALn0BYsCrtFUbm_", "invisible": True, "url": self.url}
+
+        try:
+            response = requests.post(endpoint, json=data, headers=headers)
+
+            if response.status_code == 200:
+                print(f"Captcha berhasil dipecahkan: {response.json()}")
+                verify = self.validate_captcha(response.json()["token"])
+                return response.json()
+            else:
+                print(f"Error: {response.status_code}, {response.text}")
+        except Exception as e:
+            print(f"Error: {e}")
+
+        return None
+
+    def validate_captcha(self, token):
+        headers = self.base_headers.copy()
+        response = requests.get(f"https://d0000d.com/dood?op=validate&gc_response={token}", headers=headers)
+        return response.text
+
     def extract_md5_url(self, html_response):
         match = re.search(r"\$\.get\('\/pass_md5([^']+)", html_response)
         return match.group().replace("$.get('", "") if match else None
@@ -78,18 +110,24 @@ class Doodstream:
         data_for_later = re.search(r'\?token=([^&]+)&expiry=', html_response)
         return data_for_later.group(1) if data_for_later else None
 
-    def main(self, chat_id):
-        app.send_message(chat_id, "🔄 Memulai proses pengambilan video...")
+    def main(self, bot, chat_id):
+        bot.send_message(chat_id, "🔄 Memulai proses pengambilan video...")
         response = requests.get(f"{self.url}", headers=self.base_headers)
         html_response = response.text
-        app.send_message(chat_id, "📥 Ekstraksi URL MD5...")
+        bot.send_message(chat_id, "📥 Ekstraksi URL MD5...")
         md5_url = self.extract_md5_url(html_response)
   
-        if md5_url is None:
-            app.send_message(chat_id, "❌ Gagal mengekstrak URL MD5. Proses dihentikan.")
-            return None
+        if (md5_url is None) and self.solve_captcha():
+            bot.send_message(chat_id, "🔍 Captcha terdeteksi, mencoba untuk memecahkan...")
+            response = requests.get(f"{self.url}", headers=self.base_headers)
+            html_response = response.text
+            md5_url = self.extract_md5_url(html_response)
+
+            if md5_url is None:
+                bot.send_message(chat_id, "❌ Gagal mengekstrak URL MD5. Proses dihentikan.")
+                return None
               
-        app.send_message(chat_id, "✅ URL MD5 berhasil diekstrak")
+        bot.send_message(chat_id, "✅ URL MD5 berhasil diekstrak")
         data_for_later = self.get_data_for_later(html_response)
 
         md5_url = f"https://d0000d.com{md5_url}"
@@ -98,40 +136,45 @@ class Doodstream:
         expiry_timestamp = int(time.time() * 1000)
 
         constructed_url = f"{response.text}{self.generate_random_string(10)}?token={data_for_later}&expiry={expiry_timestamp}#.mp4"
-        app.send_message(chat_id, "🔗 URL video berhasil dibangun dan siap diunduh...")
+        bot.send_message(chat_id, "🔗 URL video berhasil dibangun dan siap diunduh...")
         return constructed_url
 
-    def download_video(self, url, chat_id):
+    def download_video(self, url, bot, chat_id):
         filename = self.generate_random_string(10) + ".mp4"
-        app.send_message(chat_id, "⬇️ Mengunduh video...")
+        bot.send_message(chat_id, "⬇️ Mengunduh video...")
         with requests.get(url, stream=True, headers=self.base_headers) as r:
             r.raise_for_status()
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
-        app.send_message(chat_id, "✅ Video berhasil diunduh.")
+        bot.send_message(chat_id, "✅ Video berhasil diunduh.")
         return filename
 
-@app.on_message(filters.command(['start']))
-def send_welcome(client, message):
-    message.reply_text("Halo! Kirimkan link Doodstream untuk mengunduh video.")
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Halo! Kirimkan link Doodstream untuk mengunduh video.")
 
-@app.on_message(filters.text)
-def handle_message(client, message):
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
     doodstream_url = message.text
 
     doodstream = Doodstream(doodstream_url)
-    constructed_url = doodstream.main(message.chat.id)
+    constructed_url = doodstream.main(bot, message.chat.id)
     if constructed_url:
-        video_filename = doodstream.download_video(constructed_url, message.chat.id)
+        video_filename = doodstream.download_video(constructed_url, bot, message.chat.id)
 
-        with open(video_filename, 'rb') as video:
-            client.send_video(message.chat.id, video)
+        # Mengunggah video ke Telegram menggunakan Telethon
+        bot.send_message(message.chat.id, "📤 Mengunggah video ke Telegram...")
+        with client:
+            client.loop.run_until_complete(client.send_file(message.chat.id, InputFile(video_filename)))
 
-        # Menghapus file setelah diunggah
-        os.remove(video_filename)
-        client.send_message(message.chat.id, f"🗑️ File {video_filename} telah dihapus setelah diunggah.")
+        bot.send_message(message.chat.id, "✅ Video berhasil diunggah.")
 
-# Memulai bot
-print("Bot sedang berjalan...")
-app.run()
+        # Menghapus file video lokal setelah diunggah
+        if os.path.exists(video_filename):
+            os.remove(video_filename)
+            bot.send_message(message.chat.id, "🗑️ File video lokal berhasil dihapus.")
+
+if __name__ == '__main__':
+    client.start()
+    bot.polling()
