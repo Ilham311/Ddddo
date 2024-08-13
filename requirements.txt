@@ -2,3 +2,4 @@ telebot
 requests 
 tgcrypto 
 pyrogram
+telethon
