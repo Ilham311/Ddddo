@@ -78,12 +78,12 @@ class Doodstream:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(endpoint, json=data, headers=headers) as response:
-                    if response.status_code == 200:
+                    if response.status == 200:
                         print(f"Captcha berhasil dipecahkan: {await response.json()}")
                         verify = await self.validate_captcha((await response.json())["token"])
                         return await response.json()
                     else:
-                        print(f"Error: {response.status_code}, {await response.text()}")
+                        print(f"Error: {response.status}, {await response.text()}")
         except Exception as e:
             print(f"Error: {e}")
 
