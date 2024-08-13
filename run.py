@@ -9,7 +9,7 @@ import os
 import requests
 import socket
 
-API_TOKEN = ''6324930447:AAEK_w2_6XELCbkpVLwPN0_Sm4pfaZYv1G0''
+API_TOKEN = '6324930447:AAEK_w2_6XELCbkpVLwPN0_Sm4pfaZYv1G0'
 bot = telebot.TeleBot(API_TOKEN)
 
 def get_progress_bar(percent):
