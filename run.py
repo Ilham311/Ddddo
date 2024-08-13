@@ -1,25 +1,18 @@
-import os
-import requests
+import telebot
+import aiohttp
+import asyncio
 import re
 import random
 import string
 import time
+import os
 import socket
-from telethon import TelegramClient, events
-from telethon.tl.types import InputFile
-import telebot
+from concurrent.futures import ThreadPoolExecutor
 
-# Informasi autentikasi
+# Gantilah dengan API Token bot Telegram Anda
 API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'
-api_id = 961780
-api_hash = 'bbbfa43f067e1e8e2fb41f334d32a6a7'
-session_file = 'my_session.session'  # File session baru akan dibuat di sini
 
-# Inisialisasi bot
 bot = telebot.TeleBot(API_TOKEN)
-
-# Inisialisasi Telethon client
-client = TelegramClient(session_file, api_id, api_hash)
 
 class Doodstream:
     def __init__(self, doodstream_url):
@@ -69,7 +62,6 @@ class Doodstream:
         }
 
     def get_ip_address(self):
-        # Mendapatkan alamat IP lokal
         hostname = socket.gethostname()
         local_ip = socket.gethostbyname(hostname)
         return local_ip
@@ -85,7 +77,6 @@ class Doodstream:
 
         try:
             response = requests.post(endpoint, json=data, headers=headers)
-
             if response.status_code == 200:
                 print(f"Captcha berhasil dipecahkan: {response.json()}")
                 verify = self.validate_captcha(response.json()["token"])
@@ -110,71 +101,93 @@ class Doodstream:
         data_for_later = re.search(r'\?token=([^&]+)&expiry=', html_response)
         return data_for_later.group(1) if data_for_later else None
 
-    def main(self, bot, chat_id):
-        bot.send_message(chat_id, "🔄 Memulai proses pengambilan video...")
-        response = requests.get(f"{self.url}", headers=self.base_headers)
-        html_response = response.text
-        bot.send_message(chat_id, "📥 Ekstraksi URL MD5...")
-        md5_url = self.extract_md5_url(html_response)
-  
-        if (md5_url is None) and self.solve_captcha():
-            bot.send_message(chat_id, "🔍 Captcha terdeteksi, mencoba untuk memecahkan...")
-            response = requests.get(f"{self.url}", headers=self.base_headers)
-            html_response = response.text
-            md5_url = self.extract_md5_url(html_response)
+    async def main(self, bot, chat_id):
+        try:
+            msg = bot.send_message(chat_id, "🔄 Memulai proses pengambilan video...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.url, headers=self.base_headers) as response:
+                    html_response = await response.text()
+                
+                bot.edit_message_text("📥 Ekstraksi URL MD5...", chat_id, msg.message_id)
+                md5_url = self.extract_md5_url(html_response)
+    
+                if md5_url is None:
+                    bot.edit_message_text("🔍 Captcha terdeteksi, mencoba untuk memecahkan...", chat_id, msg.message_id)
+                    captcha_response = await self.solve_captcha()
+                    async with session.get(self.url, headers=self.base_headers) as response:
+                        html_response = await response.text()
+                    md5_url = self.extract_md5_url(html_response)
 
-            if md5_url is None:
-                bot.send_message(chat_id, "❌ Gagal mengekstrak URL MD5. Proses dihentikan.")
-                return None
+                    if md5_url is None:
+                        bot.edit_message_text("❌ Gagal mengekstrak URL MD5. Proses dihentikan.", chat_id, msg.message_id)
+                        return None
               
-        bot.send_message(chat_id, "✅ URL MD5 berhasil diekstrak")
-        data_for_later = self.get_data_for_later(html_response)
+                bot.edit_message_text("✅ URL MD5 berhasil diekstrak", chat_id, msg.message_id)
+                data_for_later = self.get_data_for_later(html_response)
+    
+                md5_url = f"https://d0000d.com{md5_url}"
+    
+                async with session.get(md5_url, headers=self.md5_headers) as response:
+                    constructed_url = f"{await response.text()}{self.generate_random_string(10)}?token={data_for_later}&expiry={int(time.time() * 1000)}#.mp4"
+                
+                bot.edit_message_text("🔗 URL video berhasil dibangun dan siap diunduh...", chat_id, msg.message_id)
+                return constructed_url
+        except Exception as e:
+            bot.edit_message_text(f"❌ Terjadi kesalahan: {str(e)}", chat_id, msg.message_id)
+            return None
 
-        md5_url = f"https://d0000d.com{md5_url}"
-
-        response = requests.get(f"{md5_url}", headers=self.md5_headers)
-        expiry_timestamp = int(time.time() * 1000)
-
-        constructed_url = f"{response.text}{self.generate_random_string(10)}?token={data_for_later}&expiry={expiry_timestamp}#.mp4"
-        bot.send_message(chat_id, "🔗 URL video berhasil dibangun dan siap diunduh...")
-        return constructed_url
-
-    def download_video(self, url, bot, chat_id):
+    async def download_video(self, url, bot, chat_id):
         filename = self.generate_random_string(10) + ".mp4"
-        bot.send_message(chat_id, "⬇️ Mengunduh video...")
-        with requests.get(url, stream=True, headers=self.base_headers) as r:
-            r.raise_for_status()
-            with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        bot.send_message(chat_id, "✅ Video berhasil diunduh.")
-        return filename
+        try:
+            msg = bot.send_message(chat_id, "⬇️ Mengunduh video...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=self.base_headers) as response:
+                    response.raise_for_status()
+                    with open(filename, 'wb') as f:
+                        while True:
+                            chunk = await response.content.read(8192)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+            
+            bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
+            return filename
+        except Exception as e:
+            bot.edit_message_text(f"❌ Gagal mengunduh video: {str(e)}", chat_id, msg.message_id)
+            return None
+
+    async def upload_video(self, filename, bot, chat_id):
+        try:
+            with open(filename, 'rb') as video:
+                await bot.send_video(chat_id, video)
+            os.remove(filename)
+            bot.send_message(chat_id, f"🗑️ File {filename} telah dihapus setelah diunggah.")
+        except Exception as e:
+            bot.send_message(chat_id, f"❌ Gagal mengunggah video: {str(e)}")
+
+async def handle_message(message):
+    doodstream_url = message.text
+    doodstream = Doodstream(doodstream_url)
+    constructed_url = await doodstream.main(bot, message.chat.id)
+    
+    if constructed_url:
+        video_filename = await doodstream.download_video(constructed_url, bot, message.chat.id)
+        
+        if video_filename:
+            await doodstream.upload_video(video_filename, bot, message.chat.id)
+        else:
+            bot.send_message(message.chat.id, "❌ Tidak dapat mengunduh video.")
+    else:
+        bot.send_message(message.chat.id, "❌ Tidak dapat membangun URL video.")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.reply_to(message, "Halo! Kirimkan link Doodstream untuk mengunduh video.")
 
 @bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    doodstream_url = message.text
+def handle_message_wrapper(message):
+    asyncio.run(handle_message(message))
 
-    doodstream = Doodstream(doodstream_url)
-    constructed_url = doodstream.main(bot, message.chat.id)
-    if constructed_url:
-        video_filename = doodstream.download_video(constructed_url, bot, message.chat.id)
-
-        # Mengunggah video ke Telegram menggunakan Telethon
-        bot.send_message(message.chat.id, "📤 Mengunggah video ke Telegram...")
-        with client:
-            client.loop.run_until_complete(client.send_file(message.chat.id, InputFile(video_filename)))
-
-        bot.send_message(message.chat.id, "✅ Video berhasil diunggah.")
-
-        # Menghapus file video lokal setelah diunggah
-        if os.path.exists(video_filename):
-            os.remove(video_filename)
-            bot.send_message(message.chat.id, "🗑️ File video lokal berhasil dihapus.")
-
-if __name__ == '__main__':
-    client.start()
-    bot.polling()
+# Memulai bot
+print("Bot sedang berjalan...")
+bot.polling()
