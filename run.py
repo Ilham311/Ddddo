@@ -138,10 +138,10 @@ class Doodstream:
             bot.edit_message_text(f"❌ Terjadi kesalahan: {str(e)}", chat_id, msg.message_id)
             return None
 
-    async def download_video(self, url, bot, chat_id):
+    async def download_video(self, url, bot, chat_id, status_message_id):
         filename = self.generate_random_string(10) + ".mp4"
         try:
-            status_message = bot.send_message(chat_id, "⬇️ Mengunduh video... 0%")
+            status_message = bot.edit_message_text("⬇️ Mengunduh video... 0%", chat_id, status_message_id)
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=self.base_headers) as response:
                     response.raise_for_status()
@@ -155,17 +155,17 @@ class Doodstream:
                             f.write(chunk)
                             downloaded_size += len(chunk)
                             percent_complete = int((downloaded_size / total_size) * 100)
-                            bot.send_message(chat_id, f"⬇️ Mengunduh video... {percent_complete}%")
+                            bot.edit_message_text(f"⬇️ Mengunduh video... {percent_complete}%", chat_id, status_message_id)
             
-            bot.send_message(chat_id, "✅ Video berhasil diunduh.")
+            bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, status_message_id)
             return filename
         except Exception as e:
-            bot.send_message(chat_id, f"❌ Gagal mengunduh video: {str(e)}")
+            bot.edit_message_text(f"❌ Gagal mengunduh video: {str(e)}", chat_id, status_message_id)
             return None
 
-    async def upload_video(self, filename, bot, chat_id):
+    async def upload_video(self, filename, bot, chat_id, status_message_id):
         try:
-            status_message = bot.send_message(chat_id, "⬆️ Mengunggah video... 0%")
+            status_message = bot.edit_message_text("⬆️ Mengunggah video... 0%", chat_id, status_message_id)
             with open(filename, 'rb') as video:
                 total_size = os.path.getsize(filename)
                 uploaded_size = 0
@@ -173,13 +173,13 @@ class Doodstream:
                     nonlocal uploaded_size
                     uploaded_size += bytes_uploaded
                     percent_complete = int((uploaded_size / total_size) * 100)
-                    bot.send_message(chat_id, f"⬆️ Mengunggah video... {percent_complete}%")
+                    bot.edit_message_text(f"⬆️ Mengunggah video... {percent_complete}%", chat_id, status_message_id)
 
                 bot.send_video(chat_id, video, progress=progress_callback)
             os.remove(filename)
-            bot.send_message(chat_id, f"🗑️ File {filename} telah dihapus setelah diunggah.")
+            bot.edit_message_text(f"🗑️ File {filename} telah dihapus setelah diunggah.", chat_id, status_message_id)
         except Exception as e:
-            bot.send_message(chat_id, f"❌ Gagal mengunggah video: {str(e)}")
+            bot.edit_message_text(f"❌ Gagal mengunggah video: {str(e)}", chat_id, status_message_id)
 
 async def handle_message(message):
     doodstream_url = message.text
@@ -187,14 +187,15 @@ async def handle_message(message):
     constructed_url = await doodstream.main(bot, message.chat.id)
     
     if constructed_url:
-        video_filename = await doodstream.download_video(constructed_url, bot, message.chat.id)
+        msg = bot.send_message(message.chat.id, "🔄 Memulai proses pengunduhan...")
+        video_filename = await doodstream.download_video(constructed_url, bot, message.chat.id, msg.message_id)
         
         if video_filename:
-            await doodstream.upload_video(video_filename, bot, message.chat.id)
+            await doodstream.upload_video(video_filename, bot, message.chat.id, msg.message_id)
         else:
-            bot.send_message(message.chat.id, "❌ Tidak dapat mengunduh video.")
+            bot.edit_message_text("❌ Tidak dapat mengunduh video.", message.chat.id, msg.message_id)
     else:
-        bot.send_message(message.chat.id, "❌ Tidak dapat membangun URL video.")
+        bot.edit_message_text("❌ Tidak dapat membangun URL video.", message.chat.id, msg.message_id)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
