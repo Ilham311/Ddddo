@@ -8,6 +8,7 @@ import time
 import os
 import requests
 import socket
+import cv2
 
 # Gantilah dengan API Token bot Telegram Anda
 API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'
@@ -69,6 +70,30 @@ class Doodstream:
     def generate_random_string(self, length):
         characters = string.ascii_letters + string.digits
         return ''.join(random.choice(characters) for _ in range(length))
+
+    # Fungsi untuk mendeteksi orientasi video
+    def detect_video_orientation(self, video_file):
+        cap = cv2.VideoCapture(video_file)
+        if not cap.isOpened():
+            print(f"Error: Tidak dapat membuka file video {video_file}")
+            return None
+
+        # Ambil frame pertama untuk memeriksa orientasi
+        ret, frame = cap.read()
+        if not ret:
+            print("Error: Tidak dapat membaca frame pertama.")
+            cap.release()
+            return None
+
+        height, width, _ = frame.shape
+
+        cap.release()
+
+        # Jika tinggi lebih besar dari lebar, maka video adalah potret
+        if height > width:
+            return "portrait"
+        else:
+            return "landscape"
 
     async def solve_captcha(self):
         endpoint = "https://turn.seized.live/solve"
@@ -161,6 +186,11 @@ class Doodstream:
 
     async def upload_video(self, filename, bot, chat_id):
         try:
+            # Tambahkan deteksi orientasi video di sini
+            orientation = self.detect_video_orientation(filename)
+            if orientation:
+                bot.send_message(chat_id, f"🖼️ Orientasi video: {orientation.capitalize()}")
+
             with open(filename, 'rb') as video:
                 bot.send_video(chat_id, video)
             os.remove(filename)
