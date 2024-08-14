@@ -3,3 +3,4 @@ requests
 tgcrypto 
 aiohttp
 telethon
+opencv-python
