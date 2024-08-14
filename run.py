@@ -8,7 +8,6 @@ import time
 import os
 import requests
 import socket
-import cv2
 
 # Gantilah dengan API Token bot Telegram Anda
 API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'
@@ -41,27 +40,6 @@ class Doodstream:
             "X-Forwarded-For": self.my_ip
         }
 
-        self.md5_headers = {
-            'Accept': '*/*',
-            'Accept-Language': 'en-GB,en;q=0.6',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Cookie': 'lang=1',
-            'Host': 'd0000d.com',
-            'Pragma': 'no-cache',
-            'Referer': self.url,
-            'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Brave";v="122"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-GPC': '1',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'X-Requested-With': 'XMLHttpRequest',
-            "X-Forwarded-For": self.my_ip,
-        }
-
     def get_ip_address(self):
         hostname = socket.gethostname()
         local_ip = socket.gethostbyname(hostname)
@@ -70,30 +48,6 @@ class Doodstream:
     def generate_random_string(self, length):
         characters = string.ascii_letters + string.digits
         return ''.join(random.choice(characters) for _ in range(length))
-
-    # Fungsi untuk mendeteksi orientasi video
-    def detect_video_orientation(self, video_file):
-        cap = cv2.VideoCapture(video_file)
-        if not cap.isOpened():
-            print(f"Error: Tidak dapat membuka file video {video_file}")
-            return None
-
-        # Ambil frame pertama untuk memeriksa orientasi
-        ret, frame = cap.read()
-        if not ret:
-            print("Error: Tidak dapat membaca frame pertama.")
-            cap.release()
-            return None
-
-        height, width, _ = frame.shape
-
-        cap.release()
-
-        # Jika tinggi lebih besar dari lebar, maka video adalah potret
-        if height > width:
-            return "portrait"
-        else:
-            return "landscape"
 
     async def solve_captcha(self):
         endpoint = "https://turn.seized.live/solve"
@@ -154,7 +108,7 @@ class Doodstream:
     
                 md5_url = f"https://d0000d.com{md5_url}"
     
-                async with session.get(md5_url, headers=self.md5_headers) as response:
+                async with session.get(md5_url, headers=self.base_headers) as response:
                     response_text = await response.text()
                     constructed_url = f"{response_text}{self.generate_random_string(10)}?token={data_for_later}&expiry={int(time.time() * 1000)}#.mp4"
                 
@@ -168,16 +122,16 @@ class Doodstream:
         filename = self.generate_random_string(10) + ".mp4"
         try:
             msg = bot.send_message(chat_id, "⬇️ Mengunduh video...")
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3600)) as session:
                 async with session.get(url, headers=self.base_headers) as response:
                     response.raise_for_status()
                     with open(filename, 'wb') as f:
                         while True:
-                            chunk = await response.content.read(8192)
+                            chunk = await response.content.read(1024 * 1024)  # 1MB per chunk
                             if not chunk:
                                 break
                             f.write(chunk)
-            
+
             bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
             return filename
         except Exception as e:
@@ -186,13 +140,8 @@ class Doodstream:
 
     async def upload_video(self, filename, bot, chat_id):
         try:
-            # Tambahkan deteksi orientasi video di sini
-            orientation = self.detect_video_orientation(filename)
-            if orientation:
-                bot.send_message(chat_id, f"🖼️ Orientasi video: {orientation.capitalize()}")
-
             with open(filename, 'rb') as video:
-                bot.send_video(chat_id, video)
+                bot.send_video(chat_id, video)  # Telegram mendukung unggahan hingga 2GB
             os.remove(filename)
             bot.send_message(chat_id, f"🗑️ File {filename} telah dihapus setelah diunggah.")
         except Exception as e:
