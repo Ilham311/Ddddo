@@ -6,11 +6,9 @@ import random
 import string
 import time
 import os
-import requests
 import socket
 
-# Gantilah dengan API Token bot Telegram Anda
-API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'
+API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'  # Ganti dengan API Token bot Telegram Anda
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -33,7 +31,7 @@ class Doodstream:
             "Sec-Fetch-Mode": "no-cors",
             "Sec-Fetch-Dest": "video",
             "Referer": self.url,
-            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
             "Pragma": "no-cache",
             "Cache-Control": "no-cache",
             "X-Requested-With": "XMLHttpRequest",
@@ -58,14 +56,14 @@ class Doodstream:
             async with aiohttp.ClientSession() as session:
                 async with session.post(endpoint, json=data, headers=headers) as response:
                     if response.status == 200:
-                        print(f"Captcha berhasil dipecahkan: {await response.json()}")
-                        verify = await self.validate_captcha((await response.json())["token"])
-                        return await response.json()
+                        response_json = await response.json()
+                        token = response_json.get("token")
+                        if token:
+                            return await self.validate_captcha(token)
                     else:
                         print(f"Error: {response.status}, {await response.text()}")
         except Exception as e:
             print(f"Error: {e}")
-
         return None
 
     async def validate_captcha(self, token):
@@ -147,37 +145,36 @@ class Doodstream:
         except Exception as e:
             bot.send_message(chat_id, f"❌ Gagal mengunggah video: {str(e)}")
 
-# Handler untuk perintah /dod
-@bot.message_handler(commands=['dod'])
-def handle_dod_command(message):
-    try:
-        # Mendapatkan teks setelah /dod sebagai link
-        doodstream_url = message.text.split(maxsplit=1)[1]  # Ambil link setelah perintah
-        doodstream = Doodstream(doodstream_url)
+async def handle_message(message):
+    doodstream_url = message.text
+    if not doodstream_url.startswith("https://doodstream.com/e/"):
+        bot.send_message(message.chat.id, "❌ Harap kirimkan link Doodstream yang valid.")
+        return
 
-        # Gunakan asyncio untuk menjalankan fungsi asinkron
-        asyncio.run(process_dod(bot, doodstream, message))
-    except IndexError:
-        bot.reply_to(message, "❌ Harap masukkan link setelah perintah /dod.")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Terjadi kesalahan: {str(e)}")
-
-# Fungsi untuk menangani proses Doodstream
-async def process_dod(bot, doodstream, message):
-    chat_id = message.chat.id
-
-    constructed_url = await doodstream.main(bot, chat_id)
+    doodstream = Doodstream(doodstream_url)
+    constructed_url = await doodstream.main(bot, message.chat.id)
     
     if constructed_url:
-        video_filename = await doodstream.download_video(constructed_url, bot, chat_id)
+        video_filename = await doodstream.download_video(constructed_url, bot, message.chat.id)
         
         if video_filename:
-            await doodstream.upload_video(video_filename, bot, chat_id)
+            await doodstream.upload_video(video_filename, bot, message.chat.id)
         else:
-            bot.send_message(chat_id, "❌ Tidak dapat mengunduh video.")
+            bot.send_message(message.chat.id, "❌ Tidak dapat mengunduh video.")
     else:
-        bot.send_message(chat_id, "❌ Tidak dapat membangun URL video.")
+        bot.send_message(message.chat.id, "❌ Tidak dapat membangun URL video.")
 
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    bot.reply_to(message, "Halo! Kirimkan perintah /dood diikuti dengan link Doodstream untuk mengunduh video.")
+
+@bot.message_handler(commands=['dood'])
+def handle_dood_command(message):
+    url = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
+    if url:
+        asyncio.run(handle_message(message))
+    else:
+        bot.reply_to(message, "❌ Harap kirimkan link Doodstream setelah perintah /dood.")
 
 # Memulai bot
 print("Bot sedang berjalan...")
