@@ -6,9 +6,10 @@ import random
 import string
 import time
 import os
+import requests
 import socket
 
-API_TOKEN = '5037870628:AAGHVEZoD1U5S5gzJjo1TzNcQQyv22EMaYQ'  # Ganti dengan API Token bot Telegram Anda
+API_TOKEN = '5037870628:AAF5SUq-ay1GE9fjuIbqr0WzFnATf14nebc'
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -31,7 +32,7 @@ class Doodstream:
             "Sec-Fetch-Mode": "no-cors",
             "Sec-Fetch-Dest": "video",
             "Referer": self.url,
-            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
             "Pragma": "no-cache",
             "Cache-Control": "no-cache",
             "X-Requested-With": "XMLHttpRequest",
@@ -56,14 +57,14 @@ class Doodstream:
             async with aiohttp.ClientSession() as session:
                 async with session.post(endpoint, json=data, headers=headers) as response:
                     if response.status == 200:
-                        response_json = await response.json()
-                        token = response_json.get("token")
-                        if token:
-                            return await self.validate_captcha(token)
+                        print(f"Captcha berhasil dipecahkan: {await response.json()}")
+                        verify = await self.validate_captcha((await response.json())["token"])
+                        return await response.json()
                     else:
                         print(f"Error: {response.status}, {await response.text()}")
         except Exception as e:
             print(f"Error: {e}")
+
         return None
 
     async def validate_captcha(self, token):
@@ -123,12 +124,29 @@ class Doodstream:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3600)) as session:
                 async with session.get(url, headers=self.base_headers) as response:
                     response.raise_for_status()
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded_size = 0
+                    start_time = time.time()
+
                     with open(filename, 'wb') as f:
                         while True:
                             chunk = await response.content.read(1024 * 1024)  # 1MB per chunk
                             if not chunk:
                                 break
                             f.write(chunk)
+                            downloaded_size += len(chunk)
+
+                            # Update progress bar and speed
+                            percent_complete = (downloaded_size / total_size) * 100
+                            speed = downloaded_size / (time.time() - start_time)
+                            progress_bar = self.create_progress_bar(percent_complete)
+                            bot.edit_message_text(
+                                f"⬇️ Mengunduh: {filename}\n"
+                                f"{progress_bar} {percent_complete:.2f}%\n"
+                                f"Processed: {self.format_size(downloaded_size)} of {self.format_size(total_size)}\n"
+                                f"Speed: {self.format_size(speed)}/s",
+                                chat_id, msg.message_id
+                            )
 
             bot.edit_message_text("✅ Video berhasil diunduh.", chat_id, msg.message_id)
             return filename
@@ -145,12 +163,24 @@ class Doodstream:
         except Exception as e:
             bot.send_message(chat_id, f"❌ Gagal mengunggah video: {str(e)}")
 
+    def create_progress_bar(self, percent):
+        bar_length = 20
+        filled_length = int(bar_length * percent // 100)
+        bar = '█' * filled_length + '□' * (bar_length - filled_length)
+        return f"[{bar}]"
+
+    def format_size(self, size):
+        # Format bytes to human-readable format
+        power = 1024
+        n = 0
+        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        while size > power:
+            size /= power
+            n += 1
+        return f"{size:.2f} {units[n]}"
+
 async def handle_message(message):
     doodstream_url = message.text
-    if not doodstream_url.startswith("https://doodstream.com/e/"):
-        bot.send_message(message.chat.id, "❌ Harap kirimkan link Doodstream yang valid.")
-        return
-
     doodstream = Doodstream(doodstream_url)
     constructed_url = await doodstream.main(bot, message.chat.id)
     
@@ -164,17 +194,13 @@ async def handle_message(message):
     else:
         bot.send_message(message.chat.id, "❌ Tidak dapat membangun URL video.")
 
-@bot.message_handler(commands=['start', 'help'])
+@bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Halo! Kirimkan perintah /dood diikuti dengan link Doodstream untuk mengunduh video.")
+    bot.reply_to(message, "Halo! Kirimkan link Doodstream untuk mengunduh video.")
 
-@bot.message_handler(commands=['dood'])
-def handle_dood_command(message):
-    url = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
-    if url:
-        asyncio.run(handle_message(message))
-    else:
-        bot.reply_to(message, "❌ Harap kirimkan link Doodstream setelah perintah /dood.")
+@bot.message_handler(func=lambda message: True)
+def handle_message_wrapper(message):
+    asyncio.run(handle_message(message))
 
 # Memulai bot
 print("Bot sedang berjalan...")
